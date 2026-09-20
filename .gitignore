@@ -1,0 +1,19 @@
+config.yaml
+__pycache__/
+*.pyc
+.venv/
+*.egg-info/
+dist/
+build/
+.idea/
+.vscode/
+.mewcode/
+.claude/
+CLAUDE.md
+
+# Playwright snapshot leaks
+example-com-snapshot.md
+example-*.md
+
+# Playwright MCP 运行日志
+.playwright-mcp/
