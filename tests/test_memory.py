@@ -13,19 +13,19 @@ from pathlib import Path
 
 import pytest
 
-from mewcode.conversation import (
+from personalcode.conversation import (
     ConversationManager,
     Message,
     ToolResultBlock,
     ToolUseBlock,
 )
-from mewcode.memory.auto_memory import MemoryManager
-from mewcode.memory.instructions import (
+from personalcode.memory.auto_memory import MemoryManager
+from personalcode.memory.instructions import (
     MAX_INCLUDE_DEPTH,
     load_instructions,
     process_includes,
 )
-from mewcode.memory.session import (
+from personalcode.memory.session import (
     ResumeResult,
     Session,
     SessionManager,
@@ -37,7 +37,7 @@ from mewcode.memory.session import (
 )
 
 # =========================================================================
-# A. 指令文件（MEWCODE.md）
+# A. 指令文件（PERSONALCODE.md）
 # =========================================================================
 
 class TestProcessIncludes:
@@ -117,32 +117,32 @@ class TestProcessIncludes:
 
 class TestLoadInstructions:
     def test_single_layer(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        mewcode_md = tmp_path / "MEWCODE.md"
-        mewcode_md.write_text("project instructions", encoding="utf-8")
+        personalcode_md = tmp_path / "PERSONALCODE.md"
+        personalcode_md.write_text("project instructions", encoding="utf-8")
         result = load_instructions(str(tmp_path))
         assert "project instructions" in result
 
     def test_multi_layer_priority(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """同一目录下 MEWCODE.md 在前，.mewcode/MEWCODE.md 在后（优先级更高）。"""
-        root_md = tmp_path / "MEWCODE.md"
+        """同一目录下 PERSONALCODE.md 在前，.personalcode/PERSONALCODE.md 在后（优先级更高）。"""
+        root_md = tmp_path / "PERSONALCODE.md"
         root_md.write_text("root level", encoding="utf-8")
-        dotdir = tmp_path / ".mewcode"
+        dotdir = tmp_path / ".personalcode"
         dotdir.mkdir()
-        dot_md = dotdir / "MEWCODE.md"
+        dot_md = dotdir / "PERSONALCODE.md"
         dot_md.write_text("dotdir level", encoding="utf-8")
         result = load_instructions(str(tmp_path))
         assert result.index("root level") < result.index("dotdir level")
         assert "---" in result
 
     def test_dotdir_walks_up(self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
-        """.mewcode/MEWCODE.md 参与逐级遍历，深层目录的排在后面。"""
+        """.personalcode/PERSONALCODE.md 参与逐级遍历，深层目录的排在后面。"""
         subprocess.run(["git", "init"], cwd=tmp_path, capture_output=True)
         sub = tmp_path / "pkg" / "deep"
         sub.mkdir(parents=True)
-        (tmp_path / ".mewcode").mkdir(exist_ok=True)
-        (tmp_path / ".mewcode" / "MEWCODE.md").write_text("dotdir root", encoding="utf-8")
-        (sub / ".mewcode").mkdir()
-        (sub / ".mewcode" / "MEWCODE.md").write_text("dotdir leaf", encoding="utf-8")
+        (tmp_path / ".personalcode").mkdir(exist_ok=True)
+        (tmp_path / ".personalcode" / "PERSONALCODE.md").write_text("dotdir root", encoding="utf-8")
+        (sub / ".personalcode").mkdir()
+        (sub / ".personalcode" / "PERSONALCODE.md").write_text("dotdir leaf", encoding="utf-8")
         result = load_instructions(str(sub))
         assert result.index("dotdir root") < result.index("dotdir leaf")
 
@@ -222,7 +222,7 @@ class TestSessionRecord:
 
 class TestSession:
     def test_append_writes_jsonl_and_updates_meta(self, tmp_path: Path) -> None:
-        sessions_dir = tmp_path / ".mewcode" / "sessions"
+        sessions_dir = tmp_path / ".personalcode" / "sessions"
         sessions_dir.mkdir(parents=True)
         meta = SessionMeta(id="test_session")
         meta.save(sessions_dir / "test_session.meta")
@@ -239,7 +239,7 @@ class TestSession:
         assert meta.title == "hello"
 
     def test_title_set_from_first_user_message(self, tmp_path: Path) -> None:
-        sessions_dir = tmp_path / ".mewcode" / "sessions"
+        sessions_dir = tmp_path / ".personalcode" / "sessions"
         sessions_dir.mkdir(parents=True)
         meta = SessionMeta(id="test_session")
         jsonl_path = sessions_dir / "test_session.jsonl"
@@ -613,7 +613,7 @@ class TestMemoryManager:
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
 
         # 创建项目级记忆目录和文件
-        project_mem_dir = tmp_path / "project" / ".mewcode" / "memory"
+        project_mem_dir = tmp_path / "project" / ".personalcode" / "memory"
         project_mem_dir.mkdir(parents=True)
         # 写一个记忆文件
         mem_file = project_mem_dir / "test_mem.md"
@@ -638,7 +638,7 @@ class TestMemoryManager:
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
 
         # 用户级记忆
-        user_mem_dir = fake_home / ".mewcode" / "memory"
+        user_mem_dir = fake_home / ".personalcode" / "memory"
         user_mem_dir.mkdir(parents=True)
         (user_mem_dir / "user_pref.md").write_text(
             "---\nname: coding style\ndescription: prefers spaces\ntype: user\n---\n\nprefer spaces\n",
@@ -646,7 +646,7 @@ class TestMemoryManager:
         )
 
         # 项目级记忆
-        project_mem_dir = tmp_path / "project" / ".mewcode" / "memory"
+        project_mem_dir = tmp_path / "project" / ".personalcode" / "memory"
         project_mem_dir.mkdir(parents=True)
         (project_mem_dir / "proj_db.md").write_text(
             "---\nname: database\ndescription: uses PostgreSQL\ntype: project\n---\n\nuses PostgreSQL\n",
@@ -667,12 +667,12 @@ class TestMemoryManager:
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
 
         # 创建记忆文件
-        user_mem_dir = fake_home / ".mewcode" / "memory"
+        user_mem_dir = fake_home / ".personalcode" / "memory"
         user_mem_dir.mkdir(parents=True)
         (user_mem_dir / "test.md").write_text("content", encoding="utf-8")
         (user_mem_dir / "MEMORY.md").write_text("- index\n", encoding="utf-8")
 
-        project_mem_dir = tmp_path / "project" / ".mewcode" / "memory"
+        project_mem_dir = tmp_path / "project" / ".personalcode" / "memory"
         project_mem_dir.mkdir(parents=True)
         (project_mem_dir / "test.md").write_text("content", encoding="utf-8")
 
@@ -693,7 +693,7 @@ class TestMemoryManager:
         fake_home.mkdir()
         monkeypatch.setattr(Path, "home", classmethod(lambda cls: fake_home))
 
-        project_mem_dir = tmp_path / "project" / ".mewcode" / "memory"
+        project_mem_dir = tmp_path / "project" / ".personalcode" / "memory"
         project_mem_dir.mkdir(parents=True)
         (project_mem_dir / "db_info.md").write_text(
             "---\nname: db\ndescription: uses PostgreSQL\ntype: project\n---\n\ncontent\n",
@@ -719,7 +719,7 @@ class TestConversationInjection:
         assert len(conv.history) == 2
         assert conv.history[0].content == "env info"
         assert "<system-reminder>" in conv.history[1].content
-        assert "mewcodeMd" in conv.history[1].content
+        assert "personalcodeMd" in conv.history[1].content
         assert "project rules" in conv.history[1].content
         assert "autoMemory" in conv.history[1].content
         assert "user prefs" in conv.history[1].content
@@ -737,7 +737,7 @@ class TestConversationInjection:
         conv.inject_long_term_memory("rules", "")
         assert len(conv.history) == 1
         assert "<system-reminder>" in conv.history[0].content
-        assert "mewcodeMd" in conv.history[0].content
+        assert "personalcodeMd" in conv.history[0].content
         assert "rules" in conv.history[0].content
 
     def test_inject_memories_only(self) -> None:
@@ -768,7 +768,7 @@ class TestConversationInjection:
         assert "mems" in content
 
     def test_inject_skills_only(self) -> None:
-        """项目可能没写 MEWCODE.md 也没有记忆，只有 Skill 时同样要注入。"""
+        """项目可能没写 PERSONALCODE.md 也没有记忆，只有 Skill 时同样要注入。"""
         conv = ConversationManager()
         conv.inject_long_term_memory("", "", "- /review: review code")
 
@@ -789,7 +789,7 @@ class TestConversationInjection:
 class TestMemoryExtraction:
     def test_memory_types_aligned_with_go(self, tmp_path: Path) -> None:
         """验证四种记忆类型枚举。"""
-        from mewcode.memory.auto_memory import VALID_TYPES, _USER_LEVEL_TYPES, _PROJECT_LEVEL_TYPES
+        from personalcode.memory.auto_memory import VALID_TYPES, _USER_LEVEL_TYPES, _PROJECT_LEVEL_TYPES
 
         assert VALID_TYPES == {"user", "feedback", "project", "reference"}
         assert _USER_LEVEL_TYPES == {"user", "feedback"}

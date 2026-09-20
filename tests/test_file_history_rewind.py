@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from mewcode.filehistory.history import FileHistory
+from personalcode.filehistory.history import FileHistory
 
 
 def test_rewind_deletes_file_created_after_target_snapshot(tmp_path):

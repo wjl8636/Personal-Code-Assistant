@@ -12,7 +12,7 @@ from typing import Any, AsyncIterator
 
 import pytest
 
-from mewcode.agent import (
+from personalcode.agent import (
     Agent,
     ErrorEvent,
     LoopComplete,
@@ -26,12 +26,12 @@ from mewcode.agent import (
     UsageEvent,
     partition_tool_calls,
 )
-from mewcode.prompts import build_environment_context, build_plan_mode_reminder, build_system_prompt
-from mewcode.client import LLMClient
-from mewcode.conversation import ConversationManager
-from mewcode.serialization import build_anthropic_messages
-from mewcode.tools import create_default_registry
-from mewcode.tools.base import (
+from personalcode.prompts import build_environment_context, build_plan_mode_reminder, build_system_prompt
+from personalcode.client import LLMClient
+from personalcode.conversation import ConversationManager
+from personalcode.serialization import build_anthropic_messages
+from personalcode.tools import create_default_registry
+from personalcode.tools.base import (
     StreamEnd,
     StreamEvent,
     TextDelta,
@@ -98,7 +98,7 @@ async def test_single_step_tool_call():
         # 第 1 轮：模型调用 ReadFile
         [
             TextDelta("Let me read the file."),
-            ToolCallComplete("t1", "ReadFile", {"file_path": "MEWCODE.md"}),
+            ToolCallComplete("t1", "ReadFile", {"file_path": "PERSONALCODE.md"}),
             StreamEnd("end_turn", input_tokens=10, output_tokens=20),
         ],
         # 第 2 轮：模型给出最终答案
@@ -110,7 +110,7 @@ async def test_single_step_tool_call():
     registry = create_default_registry()
     agent = Agent(client, registry, "anthropic", work_dir=".")
     conv = ConversationManager()
-    conv.add_user_message("Read MEWCODE.md")
+    conv.add_user_message("Read PERSONALCODE.md")
 
     events = []
     async for e in agent.run(conv):
@@ -128,20 +128,20 @@ async def test_single_step_tool_call():
 async def test_multi_step_autonomous():
     """Agent 先 WriteFile 再 ReadFile 然后停止 —— 端到端的多步流程。"""
     # 清理残留文件，避免 read-before-edit 拦截新文件创建
-    test_file = "/tmp/mewcode_test_hello.txt"
+    test_file = "/tmp/personalcode_test_hello.txt"
     if os.path.exists(test_file):
         os.remove(test_file)
     client = MockLLMClient([
         # 第 1 轮：WriteFile
         [
             TextDelta("Creating file."),
-            ToolCallComplete("t1", "WriteFile", {"file_path": "/tmp/mewcode_test_hello.txt", "content": "Hello World"}),
+            ToolCallComplete("t1", "WriteFile", {"file_path": "/tmp/personalcode_test_hello.txt", "content": "Hello World"}),
             StreamEnd("end_turn", input_tokens=10, output_tokens=20),
         ],
         # 第 2 轮：ReadFile 进行验证
         [
             TextDelta("Verifying content."),
-            ToolCallComplete("t2", "ReadFile", {"file_path": "/tmp/mewcode_test_hello.txt"}),
+            ToolCallComplete("t2", "ReadFile", {"file_path": "/tmp/personalcode_test_hello.txt"}),
             StreamEnd("end_turn", input_tokens=40, output_tokens=25),
         ],
         # 第 3 轮：最终答案
@@ -201,7 +201,7 @@ async def test_stop_max_iterations():
     for i in range(5):
         responses.append([
             TextDelta(f"Step {i}"),
-            ToolCallComplete(f"t{i}", "ReadFile", {"file_path": "MEWCODE.md"}),
+            ToolCallComplete(f"t{i}", "ReadFile", {"file_path": "PERSONALCODE.md"}),
             StreamEnd("end_turn", input_tokens=10, output_tokens=10),
         ])
 
@@ -238,7 +238,7 @@ async def test_stop_cancel():
             await asyncio.sleep(0.01)
             yield TextDelta(f"Step {self._call_count}")
             await asyncio.sleep(0.01)
-            yield ToolCallComplete(f"t{self._call_count}", "ReadFile", {"file_path": "MEWCODE.md"})
+            yield ToolCallComplete(f"t{self._call_count}", "ReadFile", {"file_path": "PERSONALCODE.md"})
             await asyncio.sleep(0.01)
             yield StreamEnd("end_turn", input_tokens=10, output_tokens=10)
 
@@ -306,7 +306,7 @@ async def test_message_splicing():
         # 第 1 轮：一个响应里包含两次工具调用
         [
             TextDelta("Reading two files."),
-            ToolCallComplete("t1", "ReadFile", {"file_path": "MEWCODE.md"}),
+            ToolCallComplete("t1", "ReadFile", {"file_path": "PERSONALCODE.md"}),
             ToolCallComplete("t2", "ReadFile", {"file_path": "pyproject.toml"}),
             StreamEnd("end_turn", input_tokens=10, output_tokens=20),
         ],
@@ -343,7 +343,7 @@ async def test_concurrent_batch_execution():
     """多个 ReadFile 调用并发执行（属于同一批次）。"""
     client = MockLLMClient([
         [
-            ToolCallComplete("t1", "ReadFile", {"file_path": "MEWCODE.md"}),
+            ToolCallComplete("t1", "ReadFile", {"file_path": "PERSONALCODE.md"}),
             ToolCallComplete("t2", "ReadFile", {"file_path": "pyproject.toml"}),
             StreamEnd("end_turn", input_tokens=10, output_tokens=20),
         ],
@@ -372,12 +372,12 @@ async def test_token_usage_accumulates():
     client = MockLLMClient([
         [
             TextDelta("Step 1"),
-            ToolCallComplete("t1", "ReadFile", {"file_path": "MEWCODE.md"}),
+            ToolCallComplete("t1", "ReadFile", {"file_path": "PERSONALCODE.md"}),
             StreamEnd("end_turn", input_tokens=100, output_tokens=50),
         ],
         [
             TextDelta("Step 2"),
-            ToolCallComplete("t2", "ReadFile", {"file_path": "MEWCODE.md"}),
+            ToolCallComplete("t2", "ReadFile", {"file_path": "PERSONALCODE.md"}),
             StreamEnd("end_turn", input_tokens=200, output_tokens=80),
         ],
         [
@@ -406,7 +406,7 @@ async def test_token_usage_accumulates():
 @pytest.mark.asyncio
 async def test_plan_mode():
     """通过 permission_mode 切换 plan 模式。"""
-    from mewcode.permissions import PermissionMode
+    from personalcode.permissions import PermissionMode
 
     registry = create_default_registry()
     agent = Agent(MockLLMClient([]), registry, "anthropic")
@@ -426,7 +426,7 @@ async def test_plan_mode():
 async def test_plan_mode_denied_tool_returns_error():
     """在 plan 模式下，写入类工具需要审批（effect=ask）；当用户
     拒绝时，工具返回一个错误结果，而不会真正执行。"""
-    from mewcode.permissions import (
+    from personalcode.permissions import (
         DangerousCommandDetector,
         PathSandbox,
         PermissionChecker,
@@ -473,7 +473,7 @@ async def test_plan_mode_denied_tool_returns_error():
 
 def test_partition_tool_calls():
     """分批逻辑会把可并发执行的调用归到同一组。"""
-    from mewcode.tools.base import ToolCallComplete
+    from personalcode.tools.base import ToolCallComplete
 
     calls = [
         ToolCallComplete("1", "ReadFile", {}),
@@ -491,7 +491,7 @@ def test_partition_tool_calls():
 
 def test_system_prompt_normal():
     sp = build_system_prompt()
-    assert "MewCode" in sp
+    assert "PersonalCode" in sp
     assert "Plan mode" not in sp
 
 def test_system_prompt_plan():

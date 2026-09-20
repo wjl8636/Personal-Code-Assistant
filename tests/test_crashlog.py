@@ -5,8 +5,8 @@
 
 import pytest
 
-from mewcode import crashlog
-from mewcode.config import ProviderConfig
+from personalcode import crashlog
+from personalcode.config import ProviderConfig
 
 
 def test_record_appends_with_timestamp(tmp_path, monkeypatch):
@@ -18,7 +18,7 @@ def test_record_appends_with_timestamp(tmp_path, monkeypatch):
     except RuntimeError as e:
         crashlog.record_exception("textual", e)
 
-    log = (tmp_path / ".mewcode" / "crash.log").read_text(encoding="utf-8")
+    log = (tmp_path / ".personalcode" / "crash.log").read_text(encoding="utf-8")
     assert "start pid=1" in log
     assert "crash [textual] RuntimeError: boom" in log
     assert "Traceback" in log
@@ -36,7 +36,7 @@ async def test_tui_unhandled_exception_is_recorded(tmp_path, monkeypatch):
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
 
-    from mewcode.app import MewCodeApp
+    from personalcode.app import PersonalCodeApp
 
     provider = ProviderConfig(
         name="test",
@@ -47,7 +47,7 @@ async def test_tui_unhandled_exception_is_recorded(tmp_path, monkeypatch):
         # 显式给出窗口大小，避免启动时去 provider 拉取
         context_window=200000,
     )
-    app = MewCodeApp(providers=[provider])
+    app = PersonalCodeApp(providers=[provider])
 
     def boom() -> None:
         raise RuntimeError("boom from tui")
@@ -58,5 +58,5 @@ async def test_tui_unhandled_exception_is_recorded(tmp_path, monkeypatch):
             app.call_next(boom)
             await pilot.pause()
 
-    log = (tmp_path / ".mewcode" / "crash.log").read_text(encoding="utf-8")
+    log = (tmp_path / ".personalcode" / "crash.log").read_text(encoding="utf-8")
     assert "crash [textual] RuntimeError: boom from tui" in log

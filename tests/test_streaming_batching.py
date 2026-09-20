@@ -19,9 +19,9 @@ import asyncio
 import pytest
 from pydantic import BaseModel
 
-from mewcode.agent import StreamingExecutor, _ToolExecResult
-from mewcode.tools import ToolRegistry
-from mewcode.tools.base import Tool, ToolResult
+from personalcode.agent import StreamingExecutor, _ToolExecResult
+from personalcode.tools import ToolRegistry
+from personalcode.tools.base import Tool, ToolResult
 
 
 class _P(BaseModel):
@@ -160,7 +160,7 @@ async def test_empty_executor():
 
 def test_bash_readonly_command_is_concurrency_safe():
     """ls、cat、git status 这类只读命令可以并发。"""
-    from mewcode.tools.bash import Bash
+    from personalcode.tools.bash import Bash
 
     bash = Bash()
     for cmd in ["ls", "ls -la", "cat a.txt", "git status", "wc -l f", "pwd"]:
@@ -169,7 +169,7 @@ def test_bash_readonly_command_is_concurrency_safe():
 
 def test_bash_mutating_command_is_not_concurrency_safe():
     """会改东西的命令必须独占。"""
-    from mewcode.tools.bash import Bash
+    from personalcode.tools.bash import Bash
 
     bash = Bash()
     for cmd in ["rm -rf build", "mv a b", "npm install", "git commit -m x",
@@ -180,7 +180,7 @@ def test_bash_mutating_command_is_not_concurrency_safe():
 
 def test_bash_missing_or_bad_command_is_not_safe():
     """参数缺失或类型不对时按不安全处理，宁可串行也不能猜。"""
-    from mewcode.tools.bash import Bash
+    from personalcode.tools.bash import Bash
 
     bash = Bash()
     assert not bash.is_concurrency_safe({})
@@ -198,8 +198,8 @@ def test_default_predicate_follows_category():
 @pytest.mark.asyncio
 async def test_readonly_bash_batches_with_read_tools():
     """只读的 Bash 要能跟 ReadFile 归到同一个并发批，这是这次改动的目的。"""
-    from mewcode.agent import partition_tool_calls
-    from mewcode.tools.bash import Bash
+    from personalcode.agent import partition_tool_calls
+    from personalcode.tools.bash import Bash
 
     reg = _registry()
     reg.register(Bash())
@@ -220,8 +220,8 @@ async def test_readonly_bash_batches_with_read_tools():
 @pytest.mark.asyncio
 async def test_mutating_bash_breaks_the_batch():
     """会改东西的 Bash 必须把批次断开，前后各自成批。"""
-    from mewcode.agent import partition_tool_calls
-    from mewcode.tools.bash import Bash
+    from personalcode.agent import partition_tool_calls
+    from personalcode.tools.bash import Bash
 
     reg = _registry()
     reg.register(Bash())

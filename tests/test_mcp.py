@@ -17,7 +17,7 @@ from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 import yaml
 
-from mewcode.config import (
+from personalcode.config import (
     AppConfig,
     ConfigError,
     MCPServerConfig,
@@ -178,8 +178,8 @@ class TestLoadConfigMCP:
 class TestMCPToolWrapper:
     def test_name_format(self) -> None:
         from mcp import types as mcp_types
-        from mewcode.mcp.tool_wrapper import MCPToolWrapper
-        from mewcode.mcp.client import MCPClient
+        from personalcode.mcp.tool_wrapper import MCPToolWrapper
+        from personalcode.mcp.client import MCPClient
 
         tool_def = mcp_types.Tool(
             name="search_issues",
@@ -204,8 +204,8 @@ class TestMCPToolWrapper:
 
     def test_name_sanitizes_illegal_chars(self) -> None:
         from mcp import types as mcp_types
-        from mewcode.mcp.client import MCPClient
-        from mewcode.mcp.tool_wrapper import MCPToolWrapper
+        from personalcode.mcp.client import MCPClient
+        from personalcode.mcp.tool_wrapper import MCPToolWrapper
 
         tool_def = mcp_types.Tool(
             name="take-snapshot",
@@ -217,7 +217,7 @@ class TestMCPToolWrapper:
 
     def test_get_schema_uses_original_input_schema(self) -> None:
         from mcp import types as mcp_types
-        from mewcode.mcp.tool_wrapper import MCPToolWrapper
+        from personalcode.mcp.tool_wrapper import MCPToolWrapper
 
         input_schema = {
             "type": "object",
@@ -243,7 +243,7 @@ class TestMCPToolWrapper:
 class TestExtractText:
     def test_text_content(self) -> None:
         from mcp import types as mcp_types
-        from mewcode.mcp.tool_wrapper import _extract_text
+        from personalcode.mcp.tool_wrapper import _extract_text
 
         content = [
             mcp_types.TextContent(type="text", text="hello"),
@@ -252,13 +252,13 @@ class TestExtractText:
         assert _extract_text(content) == "hello\nworld"
 
     def test_empty_content(self) -> None:
-        from mewcode.mcp.tool_wrapper import _extract_text
+        from personalcode.mcp.tool_wrapper import _extract_text
 
         assert _extract_text([]) == "(no output)"
 
     def test_image_content(self) -> None:
         from mcp import types as mcp_types
-        from mewcode.mcp.tool_wrapper import _extract_text
+        from personalcode.mcp.tool_wrapper import _extract_text
 
         content = [mcp_types.ImageContent(type="image", data="...", mimeType="image/png")]
         assert "[image: image/png]" in _extract_text(content)
@@ -270,8 +270,8 @@ class TestExtractText:
 class TestMCPManagerPartialFailure:
     @pytest.mark.asyncio
     async def test_single_server_failure_does_not_block_others(self) -> None:
-        from mewcode.mcp.manager import MCPManager
-        from mewcode.tools import ToolRegistry
+        from personalcode.mcp.manager import MCPManager
+        from personalcode.tools import ToolRegistry
 
         good_config = MCPServerConfig(
             name="good",
@@ -288,7 +288,7 @@ class TestMCPManagerPartialFailure:
 
         registry = ToolRegistry()
 
-        with patch("mewcode.mcp.manager.MCPClient") as MockClient:
+        with patch("personalcode.mcp.manager.MCPClient") as MockClient:
             good_instance = AsyncMock()
             good_instance.is_alive = True
 

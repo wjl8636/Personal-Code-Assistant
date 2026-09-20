@@ -11,21 +11,21 @@ from typing import Any
 import pytest
 from pydantic import BaseModel
 
-from mewcode.client import needs_tool_search_beta
-from mewcode.conversation import Message, ToolResultBlock
-from mewcode.mcp.loading_strategy import (
+from personalcode.client import needs_tool_search_beta
+from personalcode.conversation import Message, ToolResultBlock
+from personalcode.mcp.loading_strategy import (
     McpLoadingMode,
     apply_mode,
     decide_mode,
     is_official_anthropic_endpoint,
     measure_mcp_schema_chars,
 )
-from mewcode.mcp.tool_wrapper import build_mcp_tool_name, mcp_tool_name_prefix
-from mewcode.permissions.rules import extract_content
-from mewcode.serialization import build_anthropic_messages
-from mewcode.tools import ToolRegistry, create_default_registry
-from mewcode.tools.base import Tool, ToolResult
-from mewcode.tools.mcp_call import (
+from personalcode.mcp.tool_wrapper import build_mcp_tool_name, mcp_tool_name_prefix
+from personalcode.permissions.rules import extract_content
+from personalcode.serialization import build_anthropic_messages
+from personalcode.tools import ToolRegistry, create_default_registry
+from personalcode.tools.base import Tool, ToolResult
+from personalcode.tools.mcp_call import (
     McpCallParams,
     McpCallTool,
     coerce_by_schema,
@@ -239,7 +239,7 @@ class TestLoadingStrategy:
         assert decide_mode("https://proxy.example.com", 200_000, 0) is McpLoadingMode.EAGER
 
     def test_env_override(self, monkeypatch: pytest.MonkeyPatch) -> None:
-        monkeypatch.setenv("MEWCODE_MCP_LOADING", "dispatch")
+        monkeypatch.setenv("PERSONALCODE_MCP_LOADING", "dispatch")
         # 小配置本该 eager，被环境变量强制成 dispatch
         assert decide_mode("", 200_000, 10) is McpLoadingMode.DISPATCH
 
@@ -321,14 +321,14 @@ class TestPermissionContent:
         assert extract_content("mcp__linear__create_issue", {"title": "x"}) == ""
 
     def test_rule_matches_by_server_glob(self) -> None:
-        from mewcode.permissions.rules import evaluate_rules, parse_rule
+        from personalcode.permissions.rules import evaluate_rules, parse_rule
 
         rules = [parse_rule("mcp_call(linear__*)", "allow")]
         content = extract_content("mcp_call", {"server": "linear", "tool": "create_issue"})
         assert evaluate_rules(rules, "mcp_call", content) == "allow"
 
     def test_rule_matches_exact_tool(self) -> None:
-        from mewcode.permissions.rules import evaluate_rules, parse_rule
+        from personalcode.permissions.rules import evaluate_rules, parse_rule
 
         rules = [parse_rule("mcp_call(infra__deploy_service)", "deny")]
         deploy = extract_content("mcp_call", {"server": "infra", "tool": "deploy_service"})
@@ -403,7 +403,7 @@ class TestToolExposureByMode:
     """
 
     def _registry(self, mode: McpLoadingMode) -> ToolRegistry:
-        from mewcode.tools.impl.tool_search import ToolSearchTool
+        from personalcode.tools.impl.tool_search import ToolSearchTool
 
         registry = ToolRegistry()
         registry.register(ToolSearchTool(registry))
@@ -435,7 +435,7 @@ class TestToolExposureByMode:
 
     def test_no_mcp_at_all_sends_neither(self) -> None:
         # 没连 MCP 时 apply_mode 不会被调用，两个开关保持默认关闭
-        from mewcode.tools.impl.tool_search import ToolSearchTool
+        from personalcode.tools.impl.tool_search import ToolSearchTool
 
         registry = ToolRegistry()
         registry.register(ToolSearchTool(registry))

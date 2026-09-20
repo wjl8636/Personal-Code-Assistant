@@ -1,5 +1,5 @@
 [project]
-name = "mewcode"
+name = "personalcode"
 version = "0.2.0"
 description = "A terminal AI coding assistant"
 requires-python = ">=3.11"
@@ -16,10 +16,10 @@ dependencies = [
 ]
 
 [project.scripts]
-mewcode = "mewcode.__main__:main"
+personalcode = "personalcode.__main__:main"
 
 [tool.hatch.build.targets.wheel]
-packages = ["mewcode"]
+packages = ["personalcode"]
 
 [build-system]
 requires = ["hatchling"]

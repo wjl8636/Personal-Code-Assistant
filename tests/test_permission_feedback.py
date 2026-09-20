@@ -16,21 +16,21 @@ from textual import events
 from textual.app import App, ComposeResult
 from textual.containers import VerticalScroll
 
-from mewcode.agent import (
+from personalcode.agent import (
     Agent,
     PermissionReply,
     PermissionRequest,
     PermissionResponse,
     ToolResultEvent,
 )
-from mewcode.client import LLMClient
-from mewcode.config import ProviderConfig
-from mewcode.conversation import ConversationManager
-from mewcode.conversation_pairing import REJECTED_TOOL_RESULT, rejected_tool_result
-from mewcode.permission_dialog import InlinePermissionWidget
-from mewcode.permissions import DangerousCommandDetector, PathSandbox, PermissionChecker, PermissionMode, RuleEngine
-from mewcode.tools import create_default_registry
-from mewcode.tools.base import StreamEnd, StreamEvent, TextDelta, ToolCallComplete
+from personalcode.client import LLMClient
+from personalcode.config import ProviderConfig
+from personalcode.conversation import ConversationManager
+from personalcode.conversation_pairing import REJECTED_TOOL_RESULT, rejected_tool_result
+from personalcode.permission_dialog import InlinePermissionWidget
+from personalcode.permissions import DangerousCommandDetector, PathSandbox, PermissionChecker, PermissionMode, RuleEngine
+from personalcode.tools import create_default_registry
+from personalcode.tools.base import StreamEnd, StreamEvent, TextDelta, ToolCallComplete
 
 
 class _ScriptedClient(LLMClient):
@@ -205,13 +205,13 @@ async def test_widget_escape_denies() -> None:
 async def test_ctrl_c_removes_permission_widget(tmp_path, monkeypatch) -> None:
     monkeypatch.chdir(tmp_path)
     monkeypatch.setenv("ANTHROPIC_API_KEY", "test-key")
-    from mewcode.app import MewCodeApp
+    from personalcode.app import PersonalCodeApp
 
     provider = ProviderConfig(
         name="test", protocol="anthropic", base_url="", model="claude-sonnet-5",
         api_key="test-key", context_window=200000,
     )
-    app = MewCodeApp(providers=[provider])
+    app = PersonalCodeApp(providers=[provider])
     async with app.run_test() as pilot:
         await pilot.pause()
         future: asyncio.Future[PermissionReply] = asyncio.get_running_loop().create_future()

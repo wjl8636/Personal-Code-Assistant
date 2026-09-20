@@ -5,7 +5,7 @@
 
 from __future__ import annotations
 
-from mewcode.tools.diff import build_diff
+from personalcode.tools.diff import build_diff
 
 
 def test_single_line_change():

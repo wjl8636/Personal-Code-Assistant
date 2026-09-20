@@ -1,8 +1,8 @@
-# MewCode — 个人编码助手 / Terminal AI Coding Assistant
+# PersonalCode — 个人编码助手 / Terminal AI Coding Assistant
 
-一个基于 **Python + Textual** 的终端 AI 编码助手。MewCode 运行在你的终端里，以 TUI（文本用户界面）为核心，内置多模型接入、权限控制、技能（Skill）、记忆（Memory）、团队协作（Teams）、MCP 工具扩展等能力，帮助你在命令行中高效地完成编码、审查、重构等任务。
+一个基于 **Python + Textual** 的终端 AI 编码助手。PersonalCode 运行在你的终端里，以 TUI（文本用户界面）为核心，内置多模型接入、权限控制、技能（Skill）、记忆（Memory）、团队协作（Teams）、MCP 工具扩展等能力，帮助你在命令行中高效地完成编码、审查、重构等任务。
 
-> MewCode 强调 **人在回路（human-in-the-loop）**：默认权限模式下，写文件与执行命令都会先征求你的同意，把控制权始终留在你手里。
+> PersonalCode 强调 **人在回路（human-in-the-loop）**：默认权限模式下，写文件与执行命令都会先征求你的同意，把控制权始终留在你手里。
 
 ---
 
@@ -28,7 +28,7 @@
 - 队员邮箱、共享任务板、进度追踪、`coordinator mode`（Lead 只调度不写码）。
 
 ### 技能（Skill）
-- 三层技能来源：项目级（`.mewcode/skills`）、用户级（`~/.mewcode/skills`）、内置技能。
+- 三层技能来源：项目级（`.personalcode/skills`）、用户级（`~/.personalcode/skills`）、内置技能。
 - 技能可用 `/skill` 命令安装、加载与管理，内置 `frontend-design`、`skill-creator` 示例。
 
 ### 记忆（Memory）
@@ -58,7 +58,7 @@
 ```bash
 # 克隆仓库
 git clone <your-repo-url>
-cd mewcode-python
+cd personalcode-python
 
 # 安装依赖（项目使用 uv + hatchling）
 uv sync
@@ -72,16 +72,16 @@ uv pip install -e .
 
 ## ⚙️ 配置
 
-首次使用前创建配置文件。参考模板见 `.mewcode/config.yaml.example`。
+首次使用前创建配置文件。参考模板见 `.personalcode/config.yaml.example`。
 
 配置文件按优先级合并（后者覆盖前者）：
 
-1. `~/.mewcode/config.yaml` — 全局配置
-2. `<project>/.mewcode/config.yaml` — 项目配置
-3. `<project>/.mewcode/config.local.yaml` — 本地（不提交）配置
+1. `~/.personalcode/config.yaml` — 全局配置
+2. `<project>/.personalcode/config.yaml` — 项目配置
+3. `<project>/.personalcode/config.local.yaml` — 本地（不提交）配置
 
 ```bash
-cp .mewcode/config.yaml.example .mewcode/config.yaml
+cp .personalcode/config.yaml.example .personalcode/config.yaml
 # 编辑 API Key 与模型
 ```
 
@@ -121,29 +121,29 @@ providers:
 ### 交互式 TUI
 
 ```bash
-mewcode
+personalcode
 ```
 
 ### 非交互模式
 
 ```bash
 # 文本输出
-mewcode -p "解释这个仓库的架构"
+personalcode -p "解释这个仓库的架构"
 
 # 结构化 NDJSON 流式输出（便于脚本消费）
-mewcode -p "修复 src/main.py 的 bug" --output-format stream-json
+personalcode -p "修复 src/main.py 的 bug" --output-format stream-json
 ```
 
 ### 远程模式（浏览器访问 http://localhost:18888）
 
 ```bash
-mewcode --remote
+personalcode --remote
 ```
 
 ### 权限模式覆盖
 
 ```bash
-mewcode --mode bypassPermissions
+personalcode --mode bypassPermissions
 ```
 
 ---
@@ -168,14 +168,14 @@ mewcode --mode bypassPermissions
 | `/trace` | — | 查看 Agent 父子追踪树 |
 | `/worktree` | — | 管理 Git Worktree |
 
-> 还支持**自定义命令**：把 `.md` 文件放入 `~/.mewcode/commands/` 或 `<project>/.mewcode/commands/`，文件名即为命令名，可带 YAML frontmatter（`description` / `aliases` / `argument-hint`），正文支持 `$ARGUMENTS` 占位符，子目录用冒号命名空间（如 `git:log`）。
+> 还支持**自定义命令**：把 `.md` 文件放入 `~/.personalcode/commands/` 或 `<project>/.personalcode/commands/`，文件名即为命令名，可带 YAML frontmatter（`description` / `aliases` / `argument-hint`），正文支持 `$ARGUMENTS` 占位符，子目录用冒号命名空间（如 `git:log`）。
 
 ---
 
 ## 🧩 项目结构
 
 ```
-mewcode/
+personalcode/
 ├── __main__.py        # 入口：TUI / 非交互 / Remote / 队友 worker 模式
 ├── app.py             # Textual TUI 应用
 ├── agent.py           # 核心 Agent 循环与事件模型
@@ -206,7 +206,7 @@ uv sync --group dev
 uv run pytest
 ```
 
-`MEWCODE.md` 中记录了项目约定：
+`PERSONALCODE.md` 中记录了项目约定：
 
 - commit message 使用英文
 - 变量命名使用 `snake_case`

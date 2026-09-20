@@ -11,10 +11,10 @@ from unittest.mock import MagicMock
 
 import pytest
 
-from mewcode.commands.registry import CommandContext, UIController
-from mewcode.commands.handlers.clear import handle_clear
-from mewcode.conversation import ConversationManager
-from mewcode.memory.session import SessionManager
+from personalcode.commands.registry import CommandContext, UIController
+from personalcode.commands.handlers.clear import handle_clear
+from personalcode.conversation import ConversationManager
+from personalcode.memory.session import SessionManager
 
 
 class MockUI:

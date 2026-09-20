@@ -12,7 +12,7 @@
 
 from __future__ import annotations
 
-from mewcode.client import _mark_last_tool_for_cache
+from personalcode.client import _mark_last_tool_for_cache
 
 
 def _marked(tools: list[dict]) -> list[str]:

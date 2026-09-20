@@ -7,7 +7,7 @@ dist/
 build/
 .idea/
 .vscode/
-.mewcode/
+.personalcode/
 .claude/
 CLAUDE.md
 

@@ -15,24 +15,24 @@ from unittest.mock import AsyncMock, MagicMock, patch
 
 import pytest
 
-from mewcode.agents.parser import AgentDef, AgentParseError, parse_agent_file, parse_frontmatter
-from mewcode.agents.loader import AgentLoader
-from mewcode.agents.tool_filter import (
+from personalcode.agents.parser import AgentDef, AgentParseError, parse_agent_file, parse_frontmatter
+from personalcode.agents.loader import AgentLoader
+from personalcode.agents.tool_filter import (
     ALL_AGENT_DISALLOWED_TOOLS,
     ASYNC_AGENT_ALLOWED_TOOLS,
     resolve_agent_tools,
 )
-from mewcode.agents.fork import (
+from personalcode.agents.fork import (
     FORK_BOILERPLATE_TAG,
     ForkError,
     build_forked_messages,
 )
-from mewcode.agents.trace import TraceManager, TraceNode
-from mewcode.agents.task_manager import BackgroundTask, TaskManager
-from mewcode.agents.notification import format_task_notification, inject_task_notifications
-from mewcode.conversation import ConversationManager, Message, ToolResultBlock, ToolUseBlock
-from mewcode.tools import ToolRegistry
-from mewcode.tools.base import Tool, ToolResult
+from personalcode.agents.trace import TraceManager, TraceNode
+from personalcode.agents.task_manager import BackgroundTask, TaskManager
+from personalcode.agents.notification import format_task_notification, inject_task_notifications
+from personalcode.conversation import ConversationManager, Message, ToolResultBlock, ToolUseBlock
+from personalcode.tools import ToolRegistry
+from personalcode.tools.base import Tool, ToolResult
 
 # =====================================================================
 # 辅助函数
@@ -208,7 +208,7 @@ class TestAgentLoader:
         assert "Verification" in agents
 
     def test_project_overrides_builtin(self, tmp_path: Path):
-        agents_dir = tmp_path / ".mewcode" / "agents"
+        agents_dir = tmp_path / ".personalcode" / "agents"
         agents_dir.mkdir(parents=True)
         custom_md = make_agent_md(
             name="Explore",
@@ -244,7 +244,7 @@ class TestAgentLoader:
         assert "general-purpose" in names
 
     def test_hot_reload(self, tmp_path: Path):
-        agents_dir = tmp_path / ".mewcode" / "agents"
+        agents_dir = tmp_path / ".personalcode" / "agents"
         agents_dir.mkdir(parents=True)
         f = agents_dir / "custom.md"
         f.write_text(make_agent_md(name="custom", description="v1"))
@@ -257,7 +257,7 @@ class TestAgentLoader:
         assert loader.get("custom").when_to_use == "v2"
 
     def test_bad_file_skipped(self, tmp_path: Path):
-        agents_dir = tmp_path / ".mewcode" / "agents"
+        agents_dir = tmp_path / ".personalcode" / "agents"
         agents_dir.mkdir(parents=True)
         (agents_dir / "bad.md").write_text("no frontmatter")
         (agents_dir / "good.md").write_text(
@@ -650,7 +650,7 @@ class TestNotification:
 
 class TestConfig:
     def test_enable_fork_default(self, tmp_path: Path):
-        from mewcode.config import load_config
+        from personalcode.config import load_config
         cfg = tmp_path / "config.yaml"
         cfg.write_text(textwrap.dedent("""\
         providers:
@@ -665,7 +665,7 @@ class TestConfig:
         assert config.enable_verification_agent is False
 
     def test_enable_fork_can_be_disabled(self, tmp_path: Path):
-        from mewcode.config import load_config
+        from personalcode.config import load_config
         cfg = tmp_path / "config.yaml"
         cfg.write_text(textwrap.dedent("""\
         providers:
@@ -687,7 +687,7 @@ class TestConfig:
 
 class TestPermissionMode:
     def test_bypass_mode(self):
-        from mewcode.permissions.modes import PermissionMode, mode_decide
+        from personalcode.permissions.modes import PermissionMode, mode_decide
         assert PermissionMode.BYPASS.value == "bypassPermissions"
         assert mode_decide(PermissionMode.BYPASS, "read") == "allow"
         assert mode_decide(PermissionMode.BYPASS, "write") == "allow"
@@ -699,14 +699,14 @@ class TestPermissionMode:
 
 class TestAgentToolParams:
     def test_required_fields(self):
-        from mewcode.tools.agent_tool import AgentToolParams
+        from personalcode.tools.agent_tool import AgentToolParams
         params = AgentToolParams(prompt="do this", description="test")
         assert params.prompt == "do this"
         assert params.subagent_type is None
         assert params.run_in_background is False
 
     def test_optional_fields(self):
-        from mewcode.tools.agent_tool import AgentToolParams
+        from personalcode.tools.agent_tool import AgentToolParams
         params = AgentToolParams(
             prompt="do",
             description="test",
@@ -728,7 +728,7 @@ class TestAgentToolParams:
 
 class TestAgentExtensions:
     def test_agent_has_id(self):
-        from mewcode.agent import Agent
+        from personalcode.agent import Agent
         client = MagicMock()
         registry = ToolRegistry()
         agent = Agent(client=client, registry=registry, protocol="anthropic")
@@ -738,7 +738,7 @@ class TestAgentExtensions:
         assert agent.trace_id is None
 
     def test_agent_catalog(self):
-        from mewcode.agent import Agent
+        from personalcode.agent import Agent
         client = MagicMock()
         registry = ToolRegistry()
         agent = Agent(client=client, registry=registry, protocol="anthropic")
@@ -751,7 +751,7 @@ class TestSubAgentRuleInheritance:
 
     @staticmethod
     def _make_tool(parent):
-        from mewcode.tools.agent_tool import AgentTool
+        from personalcode.tools.agent_tool import AgentTool
 
         return AgentTool(
             agent_loader=None,
@@ -761,7 +761,7 @@ class TestSubAgentRuleInheritance:
         )
 
     def test_inherits_parent_rule_engine(self, tmp_path: Path):
-        from mewcode.permissions import (
+        from personalcode.permissions import (
             DangerousCommandDetector,
             PathSandbox,
             PermissionChecker,

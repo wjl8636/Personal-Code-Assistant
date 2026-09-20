@@ -13,11 +13,11 @@ import asyncio
 
 import pytest
 
-from mewcode.agent import Agent
-from mewcode.conversation import ConversationManager
-from mewcode.memory import RecallResult
-from mewcode.tools import create_default_registry
-from mewcode.tools.base import StreamEnd, TextDelta, ToolCallComplete
+from personalcode.agent import Agent
+from personalcode.conversation import ConversationManager
+from personalcode.memory import RecallResult
+from personalcode.tools import create_default_registry
+from personalcode.tools.base import StreamEnd, TextDelta, ToolCallComplete
 
 from test_agent import MockLLMClient
 
@@ -44,7 +44,7 @@ async def test_recall_injected_after_tools():
     """有工具调用的一轮：召回结果在工具结果之后注入，同时记为已注入。"""
     client = MockLLMClient([
         [
-            ToolCallComplete("t1", "ReadFile", {"file_path": "MEWCODE.md"}),
+            ToolCallComplete("t1", "ReadFile", {"file_path": "PERSONALCODE.md"}),
             StreamEnd("end_turn", input_tokens=1, output_tokens=1),
         ],
         [

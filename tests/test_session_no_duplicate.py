@@ -13,7 +13,7 @@
 
 from __future__ import annotations
 
-from mewcode.conversation import ConversationManager, Message
+from personalcode.conversation import ConversationManager, Message
 
 
 def flush(conv: ConversationManager, sink: list[Message]) -> None:
@@ -92,7 +92,7 @@ def test_later_turns_only_append_new_messages():
 
 def test_persisted_flag_not_serialized():
     """标记不能进落盘内容，也不能影响相等判断。"""
-    from mewcode.memory.session import SessionRecord
+    from personalcode.memory.session import SessionRecord
 
     m = Message(role="user", content="hi", persisted=True)
     record = SessionRecord.from_message(m)[0]
