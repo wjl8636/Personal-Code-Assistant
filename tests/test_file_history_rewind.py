@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """验证 rewind 回滚到文件创建之前的快照时，新建的文件会被删除。"""
 from __future__ import annotations
 

@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """队友之间的结构化消息协议。
 
 除了纯文本，队友之间还走几种结构化消息。它们都带一个 request_id，应答回来时

@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """记忆治理 E2E 测试。
 
 需要环境变量 PERSONALCODE_TEST_API_KEY、PERSONALCODE_TEST_BASE_URL、PERSONALCODE_TEST_MODEL。

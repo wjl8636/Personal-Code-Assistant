@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """会话记录不能重复写同一条消息。
 
 用户那句话在发送时就落盘一次（中途崩了不能丢），这一轮跑完再刷盘时必须跳过它。

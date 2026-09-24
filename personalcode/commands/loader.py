@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """从 .personalcode/commands/ 目录加载自定义 Markdown 命令。
 
 每个 .md 文件对应一个 prompt 类型命令，文件名（去掉后缀、小写化）即命令名。

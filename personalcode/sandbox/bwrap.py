@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """Linux bubblewrap（bwrap）沙箱实现。
 
 通过 bwrap 创建隔离的用户命名空间，将根文件系统以只读方式挂载，

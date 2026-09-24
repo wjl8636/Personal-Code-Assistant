@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """macOS Seatbelt 沙箱实现。
 
 通过 sandbox-exec -p <profile> 执行命令，利用 macOS 内核的 Seatbelt

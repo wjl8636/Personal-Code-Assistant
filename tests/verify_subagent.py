@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """
 SubAgent 系统端到端验证脚本。
 不依赖 LLM，直接调用核心组件验证所有 Agent 类型和关键流程。

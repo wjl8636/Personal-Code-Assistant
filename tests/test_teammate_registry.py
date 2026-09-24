@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """队友 worker 进程的工具集测试。
 
 队友进程自己组装工具集，和进程内队员那份很容易各改各的，所以这里把清单钉死：

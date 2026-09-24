@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """后台记忆整理（autoDream）。
 
 满足时间门（≥24h）和会话门（≥5 sessions）后自动 fork 子 Agent，

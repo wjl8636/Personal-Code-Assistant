@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """记忆召回在 Agent Loop 里的接线测试。
 
 召回结果只在工具执行后注入，且只有真正注入的记忆才记为已注入。

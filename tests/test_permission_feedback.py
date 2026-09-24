@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """拒绝授权时附带反馈的测试：Agent 如何把反馈交给模型，确认框如何收集输入。"""
 from __future__ import annotations
 

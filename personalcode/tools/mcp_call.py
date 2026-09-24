@@ -1,7 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 """MCP 工具的统一调用入口。
 
 MCP 工具不进入 tools[]，模型先用 ToolSearch 读到 schema，再通过 mcp_call

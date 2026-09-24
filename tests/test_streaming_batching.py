@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """StreamingExecutor 的分批执行。
 
 只读工具可以并发，写和命令类工具必须串行。收到就跑等于全部并发，模型在一轮里发

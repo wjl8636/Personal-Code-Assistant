@@ -1,7 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
 """决定 MCP 工具怎么进上下文。
 
 三条路，会话启动连上 MCP 之后定一次：

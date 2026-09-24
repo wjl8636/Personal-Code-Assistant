@@ -1,9 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
-
 from personalcode.skills.parser import SkillDef, SkillParseError, parse_skill_file, substitute_arguments
 from personalcode.skills.loader import SkillLoader
 from personalcode.skills.executor import SkillExecutor

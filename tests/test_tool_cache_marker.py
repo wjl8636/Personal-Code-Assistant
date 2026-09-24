@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """缓存断点的落点。
 
 该长什么样：落在最后一个非延迟工具上。一个工具同时带 defer_loading 和 cache_control

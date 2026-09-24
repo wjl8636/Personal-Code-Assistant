@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """Agent Loop 的集成测试 —— 以编程方式逐项验证 checklist。"""
 from __future__ import annotations
 

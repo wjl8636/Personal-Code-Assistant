@@ -1,8 +1,3 @@
-# 来源：公众号@小林coding
-# 后端八股网站：xiaolincoding.com
-# Agent网站：xiaolinnote.com
-# 简历模版：jianli.xiaolinnote.com
-
 """延迟工具清单提醒的注入时机。
 
 这条提醒是 append 进历史的，发一次就一直在上下文里，所以每轮重发只是拿相同内容
