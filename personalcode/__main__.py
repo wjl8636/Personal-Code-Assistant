@@ -177,7 +177,7 @@ async def _run_prompt(config, permission_mode, hook_engine, prompt: str, output_
 
     checker = PermissionChecker(
         detector=DangerousCommandDetector(),
-        sandbox=PathSandbox(work_dir),
+        sandbox=PathSandbox(work_dir, deny_write=PathSandbox.without_skill_deny()),
         rule_engine=RuleEngine(
             user_rules_path=home / ".personalcode" / "permissions.yaml",
             project_rules_path=Path(work_dir) / ".personalcode" / "permissions.yaml",
@@ -242,6 +242,22 @@ async def _run_prompt(config, permission_mode, hook_engine, prompt: str, output_
     # Lead 给队员派活、续写都走这个工具，团队要等 TeamCreate 才存在，
     # 所以这里不绑定团队，发信时再取当前团队
     registry.register(SendMessageTool(team_manager=team_manager))
+
+    # Skill 自进化工具：CLI 单次模式同样可用（写盘成功走 create/evolve 落盘）。
+    from personalcode.skills.loader import SkillLoader
+    from personalcode.tools.skill_create import SkillCreateTool
+    from personalcode.tools.skill_evolve import SkillEvolveTool
+
+    skill_loader = SkillLoader(work_dir)
+    skill_loader.load_all()
+    skill_create_tool = SkillCreateTool()
+    skill_create_tool.set_loader(skill_loader)
+    skill_create_tool.set_work_dir(work_dir)
+    registry.register(skill_create_tool)
+    skill_evolve_tool = SkillEvolveTool()
+    skill_evolve_tool.set_loader(skill_loader)
+    skill_evolve_tool.set_work_dir(work_dir)
+    registry.register(skill_evolve_tool)
 
     # 连 MCP。放在所有内建工具注册完之后：MCP 工具的加载模式要按 schema 总量
     # 跟上下文窗口比，得等工具都在位才算得准。

@@ -61,10 +61,17 @@ class CompactBoundary:
     未做改动的近期尾部消息。session 层（持有 sessionId / 文件句柄）会把二者一起
     内联进一条 compact_boundary 记录，这样 resume 时就能重建压缩后的状态。
     用这种方式把写操作解耦出去，能让 auto_compact 保持纯粹、不依赖任何 session。
+
+    折叠路径（fold=True）时 `summary` 放 format_folded_memory 的全文、`keep` 为空
+    列表，`memory` 放三结构折叠记忆 dict——session 层据此写 folded_memory 记录而非
+    普通 compact_boundary。
     """
 
     summary: str
     keep: list[Message]
+    # 是否来自会话记忆折叠（false = 普通摘要压缩）；memory 是折叠后的三结构 dict。
+    fold: bool = False
+    memory: dict[str, Any] | None = None
 
 
 @dataclass
@@ -639,6 +646,7 @@ async def auto_compact(
     recovery: RecoveryState | None = None,
     tool_schemas: list[Mapping[str, Any]] | None = None,
     transcript_path: str = "",
+    fold_memory_fn: Callable[[str], Awaitable[dict[str, Any]]] | None = None,
 ) -> CompactEvent | str | None:
     # 以真实 API 用量为锚点做阈值判断：current_tokens() 返回上次计费基准
     # （input + cache_read + cache_creation + output）加上锚点之后新增消息的
@@ -667,6 +675,34 @@ async def auto_compact(
                 return "自动压缩已熔断（连续失败 3 次），请手动处理或使用 /compact"
 
     before_tokens = current
+
+    # 会话记忆折叠路径：调用方传入 fold_memory_fn（agent 层的 generate_folded_session_memory）
+    # 时，把历史折叠成三结构记忆替换，而不是纯摘要压缩。折叠后的历史更短、
+    # 结构更利于继续执行；解析失败会由 fold_memory_fn 内部 fallback 保留 transcript。
+    if fold_memory_fn is not None:
+        from personalcode.context.folding import (
+            build_transcript_from_history,
+            format_folded_memory,
+        )
+
+        transcript = build_transcript_from_history(conversation.history, protocol=protocol)
+        if not transcript.strip():
+            return None
+        memory = await fold_memory_fn(transcript)
+        folded_text = format_folded_memory(memory)
+        conversation.replace_history([Message(role="user", content=folded_text)])
+        cleanup_tool_results(session_dir)
+        if breaker is not None:
+            breaker.record_success()
+        return CompactEvent(
+            before_tokens=before_tokens,
+            boundary=CompactBoundary(
+                summary=folded_text,
+                keep=[],
+                fold=True,
+                memory=memory,
+            ),
+        )
 
     # 历史里的工具结果在入历史时已按预算处理为终态，history 就是实际
     # 发送量，直接基于它计算 keep_start 和构建摘要。

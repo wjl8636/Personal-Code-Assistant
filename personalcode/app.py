@@ -86,6 +86,9 @@ from personalcode.tools.impl.tool_search import ToolSearchTool
 from personalcode.tools.mcp_call import McpCallTool
 from personalcode.tools.install_skill import InstallSkillTool
 from personalcode.tools.load_skill import LoadSkill
+from personalcode.tools.skill_create import SkillCreateTool
+from personalcode.tools.skill_evolve import SkillEvolveTool
+from personalcode.tools.compact_context import CompactContextTool
 from personalcode.worktree.cleanup import start_stale_cleanup_task
 from personalcode.worktree.manager import WorktreeManager
 from personalcode.commands.handlers.worktree import create_worktree_command
@@ -727,7 +730,9 @@ class PersonalCodeApp(App):
         )
         checker = PermissionChecker(
             detector=DangerousCommandDetector(),
-            sandbox=PathSandbox(work_dir),
+            # Skill 自进化需要写项目级 skills 目录：用 without_skill_deny 放开该目录，
+            # config.yaml / permissions.local.yaml 仍保持禁写（见 PathSandbox.without_skill_deny）
+            sandbox=PathSandbox(work_dir, deny_write=PathSandbox.without_skill_deny()),
             rule_engine=RuleEngine(
                 user_rules_path=home / ".personalcode" / "permissions.yaml",
                 project_rules_path=Path(work_dir) / ".personalcode" / "permissions.yaml",
@@ -815,6 +820,8 @@ class PersonalCodeApp(App):
         self.skill_loader.load_all()
 
         load_skill_tool.set_loader(self.skill_loader)
+        # Skill 自进化需要 Agent 持有 loader 引用（写盘成功后 reload 刷新 catalog）
+        self.agent.set_skill_loader(self.skill_loader)
         load_skill_tool.set_agent(self.agent)
 
         install_skill_tool.set_loader(self.skill_loader)
@@ -851,6 +858,25 @@ class PersonalCodeApp(App):
             )
 
         install_skill_tool.set_on_installed(_on_skill_installed)
+
+        # --- Skill 自进化 / 会话折叠工具注册 ---
+        # skill_create / skill_evolve：category=write → default 模式会走权限 ask（人在回路），
+        # 写盘成功后内部 reload，新 skill 立即可用。
+        skill_create_tool = SkillCreateTool()
+        skill_create_tool.set_loader(self.skill_loader)
+        skill_create_tool.set_work_dir(work_dir)
+        self.registry.register(skill_create_tool)
+
+        skill_evolve_tool = SkillEvolveTool()
+        skill_evolve_tool.set_loader(self.skill_loader)
+        skill_evolve_tool.set_work_dir(work_dir)
+        self.registry.register(skill_evolve_tool)
+
+        # compact_context：category=read → default 自动放行，模型自主触发会话折叠。
+        # 需要 agent 已构造完成（本段在其后），直接注入。
+        compact_ctx_tool = CompactContextTool()
+        compact_ctx_tool.set_agent(self.agent)
+        self.registry.register(compact_ctx_tool)
 
         # --- Worktree 系统初始化 ---
         from personalcode.config import WorktreeConfig
@@ -1095,18 +1121,28 @@ class PersonalCodeApp(App):
             msg.persisted = True
 
     def _persist_compact_boundary(self, notification: CompactNotification) -> None:
-        """Layer-2 compact 后写入 compact_boundary 记录。
+        """Layer-2 compact 后写入压缩/折叠记录。
 
-        将摘要 + 原样保留的尾部内联到一条记录中，resume 时只需这一条
-        就能重建压缩后的状态。之前已写入磁盘的原始前缀不会被重放。
+        普通压缩：摘要 + 原样保留的尾部内联到一条 compact_boundary 记录；
+        会话记忆折叠（boundary.fold=True）：三结构折叠记忆写为 folded_memory 记录。
+        两者 resume 时都能重建压缩后的状态。之前已写入磁盘的原始前缀不会被重放。
         没有活跃 session 或 compact 未产出 boundary 时直接跳过。
         """
         if not self.session or notification.boundary is None:
             return
-        record = make_compact_boundary(
-            notification.boundary.summary,
-            notification.boundary.keep,
-        )
+        if notification.boundary.fold and notification.boundary.memory is not None:
+            from personalcode.memory.session import make_folded_memory_record
+
+            record = make_folded_memory_record(
+                notification.boundary.memory,
+                trigger="auto",
+                pre_fold_tokens=notification.before_tokens,
+            )
+        else:
+            record = make_compact_boundary(
+                notification.boundary.summary,
+                notification.boundary.keep,
+            )
         self.session.append_record(record)
 
     def _set_conversation(self, conv: ConversationManager) -> None:

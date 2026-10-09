@@ -27,6 +27,9 @@ SESSION_SUMMARY_PROMPT = (
 
 # 压缩边界记录的类型标记。普通对话消息不带 type，靠 role 区分 user / assistant。
 TYPE_COMPACT_BOUNDARY = "compact_boundary"
+# 会话记忆折叠记录：content 是 {"memory": <三结构 dict>, "trigger": str, "pre_fold_tokens": int}。
+# 折叠把整段历史替换成结构化 session memory，resume 时重建为一条折叠记忆 user 消息。
+TYPE_FOLDED_MEMORY = "folded_memory"
 
 
 def _tool_uses_to_dicts(message: Message) -> list[dict[str, Any]]:
@@ -69,6 +72,9 @@ class SessionRecord:
 
     def is_compact_boundary(self) -> bool:
         return self.type == TYPE_COMPACT_BOUNDARY
+
+    def is_folded_memory(self) -> bool:
+        return self.type == TYPE_FOLDED_MEMORY
 
     def to_jsonl(self) -> str:
         data: dict[str, Any] = {
@@ -205,6 +211,34 @@ def parse_compact_boundary(record: SessionRecord) -> tuple[str, list[Message]]:
     return summary, keep_messages
 
 
+def make_folded_memory_record(
+    memory: dict[str, Any],
+    trigger: str = "auto",
+    pre_fold_tokens: int = 0,
+) -> SessionRecord:
+    """构建 folded_memory 记录，供 Session.append_record 持久化。"""
+    payload = {
+        "memory": memory,
+        "trigger": trigger,
+        "pre_fold_tokens": pre_fold_tokens,
+    }
+    return SessionRecord(
+        role="system",
+        content=payload,
+        timestamp=datetime.now(timezone.utc),
+        type=TYPE_FOLDED_MEMORY,
+    )
+
+
+def parse_folded_memory_record(record: SessionRecord) -> dict[str, Any] | None:
+    """解析 folded_memory 记录；损坏 payload 返回 None，不让 resume 崩溃。"""
+    content = record.content
+    if not isinstance(content, dict):
+        return None
+    memory = content.get("memory")
+    return memory if isinstance(memory, dict) else None
+
+
 # ---------------------------------------------------------------------------
 # Record ↔ Message 转换
 # ---------------------------------------------------------------------------
@@ -220,8 +254,9 @@ def records_to_messages(records: list[SessionRecord]) -> list[Message]:
     """把落盘记录还原成内存中的对话消息。
 
     每条记录对应一条消息，工具块随记录一起还原；压缩边界展开成「摘要 user 消息 +
-    原样保留的 keep 尾部」。恢复出来的历史可能含中断留下的悬空 tool_use，交由发
-    请求前的 ensure_tool_pairing 统一补齐，这里不做截断。
+    原样保留的 keep 尾部」；折叠记录重建为一条折叠记忆 user 消息（Agent 从该状态继续）。
+    恢复出来的历史可能含中断留下的悬空 tool_use，交由发请求前的 ensure_tool_pairing
+    统一补齐，这里不做截断。
     """
     messages: list[Message] = []
     for record in records:
@@ -229,6 +264,13 @@ def records_to_messages(records: list[SessionRecord]) -> list[Message]:
             summary, keep_messages = parse_compact_boundary(record)
             messages.append(Message(role="user", content=RESUME_SUMMARY_PREFIX + summary))
             messages.extend(keep_messages)
+            continue
+        if record.is_folded_memory():
+            memory = parse_folded_memory_record(record)
+            if memory:
+                from personalcode.context.folding import format_folded_memory
+
+                messages.append(Message(role="user", content=format_folded_memory(memory)))
             continue
         if record.role not in ("user", "assistant"):
             continue
@@ -444,13 +486,14 @@ class SessionManager:
                 if record is not None:
                     records.append(record)
 
-        # 重建压缩后的状态：仅从最后一个 compact_boundary 开始重放。
-        # 该标记之前的 record 是已被摘要过的原始前缀——保留在磁盘上供审计，
-        # 但不再重放。标记本身内联了摘要 + 原样 keep 尾部，标记之后追加的
-        # 普通消息（续写）照常重放。没有 boundary 则全量重放（兼容旧 session）。
+        # 重建压缩后的状态：仅从最后一个压缩/折叠边界开始重放。
+        # 该标记之前的 record 是已被压缩过的原始前缀——保留在磁盘上供审计，
+        # 但不再重放。标记本身内联了摘要 + 原样 keep 尾部（compact_boundary）或
+        # 三结构折叠记忆（folded_memory），标记之后追加的普通消息（续写）照常重放。
+        # 没有边界则全量重放（兼容旧 session）。
         last_boundary = -1
         for i, rec in enumerate(records):
-            if rec.is_compact_boundary():
+            if rec.is_compact_boundary() or rec.is_folded_memory():
                 last_boundary = i
         if last_boundary >= 0:
             records = records[last_boundary:]

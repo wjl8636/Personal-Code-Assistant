@@ -59,6 +59,9 @@ from personalcode.tools import ToolRegistry, create_default_registry
 from personalcode.tools.impl.tool_search import ToolSearchTool
 from personalcode.tools.mcp_call import McpCallTool
 from personalcode.tools.load_skill import LoadSkill
+from personalcode.tools.skill_create import SkillCreateTool
+from personalcode.tools.skill_evolve import SkillEvolveTool
+from personalcode.tools.compact_context import CompactContextTool
 from personalcode.web_content import INDEX_HTML
 
 log = logging.getLogger(__name__)
@@ -228,7 +231,8 @@ class RemoteServer:
         # 权限系统
         checker = PermissionChecker(
             detector=DangerousCommandDetector(),
-            sandbox=PathSandbox(work_dir),
+            # Skill 自进化需要写项目级 skills 目录：用 without_skill_deny 放开该目录
+            sandbox=PathSandbox(work_dir, deny_write=PathSandbox.without_skill_deny()),
             rule_engine=RuleEngine(
                 user_rules_path=home / ".personalcode" / "permissions.yaml",
                 project_rules_path=Path(work_dir) / ".personalcode" / "permissions.yaml",
@@ -336,6 +340,8 @@ class RemoteServer:
 
         # 连接 Skill 到 Agent
         load_skill_tool.set_loader(self.skill_loader)
+        # Skill 自进化需要 Agent 持有 loader 引用
+        self.agent.set_skill_loader(self.skill_loader)
         load_skill_tool.set_agent(self.agent)
 
         catalog = self.skill_loader.get_catalog()
@@ -346,6 +352,21 @@ class RemoteServer:
             lines.append("")
             lines.append("If the user's request matches a Skill, call LoadSkill to activate it.")
             self.agent.set_skill_catalog("\n".join(lines))
+
+        # Skill 自进化 / 折叠工具（remote 模式同样可用）
+        skill_create_tool = SkillCreateTool()
+        skill_create_tool.set_loader(self.skill_loader)
+        skill_create_tool.set_work_dir(work_dir)
+        self.registry.register(skill_create_tool)
+
+        skill_evolve_tool = SkillEvolveTool()
+        skill_evolve_tool.set_loader(self.skill_loader)
+        skill_evolve_tool.set_work_dir(work_dir)
+        self.registry.register(skill_evolve_tool)
+
+        compact_ctx_tool = CompactContextTool()
+        compact_ctx_tool.set_agent(self.agent)
+        self.registry.register(compact_ctx_tool)
 
         # 初始化对话管理器
         self.conversation = ConversationManager()

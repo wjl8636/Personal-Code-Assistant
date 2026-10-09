@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import asyncio
+import json
 import logging
 import time
 import uuid
@@ -11,7 +12,13 @@ from typing import Any, AsyncIterator, Callable
 
 from pydantic import ValidationError
 
-from personalcode.client import LLMClient
+from personalcode.client import (
+    AuthenticationError,
+    LLMClient,
+    LLMError,
+    NetworkError,
+    RateLimitError,
+)
 from personalcode.context import (
     CompactBoundary,
     CompactCircuitBreaker,
@@ -55,6 +62,11 @@ MEMORY_EXTRACTION_INTERVAL = 1
 MAX_RECENT_TOOLS = 10
 MAX_TOKENS_CEILING = 64000
 MAX_OUTPUT_TOKENS_RECOVERIES = 3
+
+# LLM 流式调用的瞬时错误重试策略（应对 provider 高峰期限流/繁忙/网络抖动）。
+# 只在「本轮尚未产出任何内容」时重试，避免向用户重复输出或重复提交工具。
+LLM_STREAM_MAX_ATTEMPTS = 3
+LLM_STREAM_BASE_BACKOFF = 1.5  # 秒，指数退避基数（1.5 -> 3.0 -> 6.0）
 
 
 # ---------------------------------------------------------------------------
@@ -190,6 +202,21 @@ class LLMResponse:
     output_tokens: int = 0
     cache_read: int = 0
     cache_creation: int = 0
+
+    def is_empty(self) -> bool:
+        """本轮 LLM 调用是否尚未产出任何实质内容。
+
+        用于重试判定：只有当流在「一个字都没吐、也没发起任何工具调用、也没返回
+        usage 之前」就失败时，重试才是安全的（不会向用户重复输出、也不会重复
+        提交工具）。一旦有任何内容落地，就交由上层把错误原样抛给用户，避免重复。
+        """
+        return (
+            not self.text
+            and not self.tool_calls
+            and not self.thinking_blocks
+            and self.input_tokens == 0
+            and self.output_tokens == 0
+        )
 
 
 class StreamCollector:
@@ -424,6 +451,285 @@ class Agent:
         self.memory_recall_task: Any | None = None
         self._memory_recall_consumed: bool = False
 
+        # ── Skill 自进化状态 ──────────────────────────────────────────
+        # 上一轮的「用户消息 + assistant 回复 + 检索引用」暂存，等下一轮用户反馈
+        # 到来时合并成 ready window，后台跑 online_ingest。
+        self._pending_skill_extraction_window: dict[str, Any] | None = None
+        self._last_retrieved_skill_hits: list[dict[str, Any]] = []
+        self._last_retrieved_skill_reference: dict[str, Any] | None = None
+        # 后台 skill 任务集合：drain_background_skill_tasks 供评测/退出时 await
+        self._background_skill_tasks: set[asyncio.Task] = set()
+        # SkillLoader 引用（由 app.py/remote.py 注入；未注入时自进化不可用）
+        self._skill_loader: Any = None
+
+        # ── 会话记忆折叠状态 ──────────────────────────────────────────
+        # FoldContext：由 _fold_ctx 持有，启用折叠时传入 auto_compact 的 fold 参数。
+        self._fold_ctx: Any = None
+        self._fold_count: int = 0
+        self._fold_last_time: float = 0.0
+
+    # ------------------------------------------------------------------
+    # side-query（独立 LLM 调用，对齐 recall.SelectorFn 的裸调用模式）
+    # ------------------------------------------------------------------
+
+    async def _run_side_query(self, system: str, user_message: str) -> str:
+        """用独立 ConversationManager 调一次 LLM，返回纯文本结果。
+
+        复用 personalcode 既有的「裸调用」模式（app.py selector / auto_memory
+        extract / session summary），不引入统一 SideQuery 类。
+        """
+        from personalcode.conversation import Message as _Message
+
+        conv = ConversationManager()
+        conv.history = [_Message(role="user", content=user_message)]
+        collected = ""
+        try:
+            async for ev in self.client.stream(conv, system=system):
+                if isinstance(ev, StreamText):
+                    collected += ev.text
+        except Exception as e:
+            log.debug("side query failed: %s", e)
+            return ""
+        return collected
+
+    # ------------------------------------------------------------------
+    # Skill 自进化：pending window + 后台 online_ingest
+    # ------------------------------------------------------------------
+
+    def set_skill_loader(self, loader: Any) -> None:
+        """注入 SkillLoader（由 app.py/remote.py 调用）。
+
+        自进化写盘成功后需要 loader.reload() 刷新 catalog，因此 Agent 要持有
+        loader 引用。未注入时自进化链路不启动。
+        """
+        self._skill_loader = loader
+
+    def _set_pending_skill_extraction_window(
+        self,
+        *,
+        user_message: str,
+        assistant_text: str,
+        retrieved_reference: dict[str, Any] | None,
+    ) -> None:
+        """当前轮结束后暂存 pending window（最近消息 + 本轮 user/assistant + 检索引用）。"""
+        if not user_message.strip() and not assistant_text.strip():
+            return
+        self._pending_skill_extraction_window = {
+            "messages": self._recent_dialog_messages(max_messages=8),
+            "user_message": user_message,
+            "assistant_text": assistant_text,
+            "retrieved_reference": self._compact_retrieved_reference(retrieved_reference),
+            "session_id": self.session_id,
+        }
+
+    def _pop_pending_skill_extraction_window(self, next_user_feedback: str) -> dict[str, Any] | None:
+        """弹出 pending window，并把下一轮用户反馈合并进去作为演化信号。"""
+        pending = self._pending_skill_extraction_window
+        self._pending_skill_extraction_window = None
+        if not pending:
+            return None
+        messages = list(pending.get("messages") or [])
+        feedback = str(next_user_feedback or "").strip()
+        if feedback:
+            messages.append({"role": "user", "content": feedback})
+        pending["messages"] = messages[-10:]
+        pending["next_user_feedback"] = feedback
+        return pending
+
+    def _recent_dialog_messages(self, max_messages: int = 8) -> list[dict[str, Any]]:
+        """把当前对话历史里最近的 user/assistant 纯文本消息转成 extractor 用格式。"""
+        conv = getattr(self, "_current_conversation", None)
+        if conv is None:
+            return []
+        out: list[dict[str, Any]] = []
+        for msg in list(conv.history)[-max_messages * 2:]:
+            if msg.role not in ("user", "assistant"):
+                continue
+            content = (msg.content or "").strip()
+            if not content:
+                continue
+            out.append({"role": msg.role, "content": content})
+        return out[-max_messages:]
+
+    def _compact_retrieved_reference(self, ref: dict[str, Any] | None) -> dict[str, Any] | None:
+        if not ref:
+            return None
+        return {k: v for k, v in ref.items() if k != "all_hits"}
+
+    def _schedule_background_skill_task(self, coro: Any) -> None:
+        """把后台 skill 任务登记进集合，避免泄漏；plan 模式不启动。"""
+        if self.permission_mode == PermissionMode.PLAN:
+            try:
+                coro.close()
+            except Exception:
+                pass
+            return
+        task = asyncio.create_task(coro)
+        self._background_skill_tasks.add(task)
+
+        def _done(done_task: asyncio.Task) -> None:
+            self._background_skill_tasks.discard(done_task)
+            try:
+                done_task.result()
+            except Exception:
+                pass
+
+        task.add_done_callback(_done)
+
+    async def drain_background_skill_tasks(self) -> None:
+        """等待所有后台 skill 任务完成（评测/退出时调用）。"""
+        tasks = [t for t in self._background_skill_tasks if not t.done()]
+        if tasks:
+            await asyncio.gather(*tasks, return_exceptions=True)
+
+    async def _run_online_skill_evolution(self, window: dict[str, Any]) -> None:
+        """消费 ready pending window，跑一次 online_ingest 并刷新 catalog。"""
+        if self._skill_loader is None:
+            return
+        messages = list(window.get("messages") or [])
+        if not messages:
+            return
+        from personalcode.skills.online_evolution import online_ingest
+
+        try:
+            result = await online_ingest(
+                messages=messages,
+                side_query=self._run_side_query,
+                loader=self._skill_loader,
+                work_dir=self.work_dir,
+                retrieved_reference=window.get("retrieved_reference") or None,
+                hint="",
+                confirm_write=None,
+                target="project",
+            )
+            if result.get("ok") and result.get("action") in {"add", "merge"}:
+                self._refresh_runtime_system_prompt()
+                log.debug("online skill %s: %s", result.get("action"), result.get("skill"))
+        except Exception as e:
+            log.debug("online skill evolution failed: %s", e)
+
+    # ------------------------------------------------------------------
+    # 会话记忆折叠：自动阈值 + 模型自主 compact_context
+    # ------------------------------------------------------------------
+
+    def _build_fold_guidance_section(self) -> str:
+        """渲染给模型的折叠指引：促使在上下文过长时主动调用 compact_context。
+
+        折叠次数到上限时改注入「不要再折叠」提醒，避免模型反复触发。
+        """
+        if self._fold_ctx is None:
+            return ""
+        max_fold = getattr(self._fold_ctx, "max_fold_limit", 3)
+        if self._fold_count >= max_fold:
+            return (
+                "\n\n# Context management\n"
+                "- Context folding limit reached. Continue without calling `compact_context`."
+            )
+        return (
+            "\n\n# Context management\n"
+            "- When context is long, tool results are noisy, or a strategy reset would "
+            "help, call `compact_context` to fold the session into structured memory.\n"
+            "- After folding, continue from the folded session memory; verify file "
+            "state before making changes."
+        )
+
+    async def generate_folded_session_memory(self, transcript: str) -> dict[str, Any]:
+        """用 side query 折叠 transcript 成三结构记忆。
+
+        mode=three_parallel 时三块并发独立生成（单块坏不影响其他块语义，但任一
+        坏都整体 fallback）；single_json 用单个完整 schema 调用。
+        """
+        from personalcode.context.folding import (
+            FOLD_COMPONENT_SYSTEMS,
+            FOLD_SESSION_MEMORY_SYSTEM,
+            build_folding_user_prompt,
+            fallback_folded_memory,
+            parse_fold_component,
+            parse_folded_memory,
+        )
+
+        mode = getattr(self._fold_ctx, "mode", "three_parallel") if self._fold_ctx else "three_parallel"
+        if mode == "three_parallel":
+            names = tuple(FOLD_COMPONENT_SYSTEMS)
+            prompt = "Extract the requested memory from this conversation.\n\n" + transcript
+            results = await asyncio.gather(
+                *(self._run_side_query(FOLD_COMPONENT_SYSTEMS[name], prompt) for name in names),
+                return_exceptions=True,
+            )
+            if any(isinstance(r, BaseException) for r in results):
+                log.debug("parallel fold memory generation failed; using fallback")
+                return fallback_folded_memory(transcript)
+            try:
+                return {name: parse_fold_component(name, raw) for name, raw in zip(names, results)}
+            except (ValueError, TypeError, json.JSONDecodeError):
+                log.debug("parallel fold memory malformed; using fallback")
+                return fallback_folded_memory(transcript)
+        # single_json
+        raw = await self._run_side_query(
+            FOLD_SESSION_MEMORY_SYSTEM, build_folding_user_prompt(transcript)
+        )
+        try:
+            return parse_folded_memory(raw)
+        except (ValueError, TypeError, json.JSONDecodeError):
+            log.debug("single fold memory malformed; using fallback")
+            return fallback_folded_memory(transcript)
+
+    async def manual_fold(self, reason: str = "") -> dict[str, Any]:
+        """模型通过 compact_context 工具触发的自主折叠。
+
+        对齐 manual_compact 的结构：构造 fold 上下文调 auto_compact(fold_memory_fn=...)。
+        成功返回 {"ok": True, "message": ...}；失败返回 {"ok": False, "error": ...}。
+        """
+        if self._fold_ctx is None:
+            return {"ok": False, "error": "folding is disabled for this run"}
+        if self._fold_count >= getattr(self._fold_ctx, "max_fold_limit", 3):
+            return {"ok": False, "error": "fold limit reached"}
+
+        from personalcode.context.folding import format_folded_memory
+
+        conv = getattr(self, "_current_conversation", None)
+        if conv is None or len(conv.history) < 4:
+            return {"ok": False, "error": "insufficient conversation history to fold"}
+
+        from personalcode.context.manager import auto_compact
+
+        before = conv.current_tokens()
+        # 复用 auto_compact 的折叠路径：传 fold_memory_fn 让它走三结构记忆折叠
+        result = await auto_compact(
+            conv,
+            self.client,
+            self.context_window,
+            self.session_dir,
+            protocol=self.protocol,
+            manual=True,
+            breaker=self.compact_breaker,
+            recovery=self.recovery_state,
+            tool_schemas=self.registry.get_all_schemas(self.protocol),
+            transcript_path=self._transcript_path,
+            fold_memory_fn=self.generate_folded_session_memory,
+        )
+        from personalcode.context.manager import CompactEvent
+
+        if isinstance(result, CompactEvent):
+            self._fold_count += 1
+            self._fold_last_time = time.monotonic()
+            env_context = build_environment_context(
+                self.work_dir, self.active_skills, self._skill_catalog, self._agent_catalog
+            )
+            conv.inject_environment(env_context)
+            memory_content = self.memory_manager.load() if self.memory_manager else ""
+            conv.inject_long_term_memory(self.instructions_content, memory_content)
+            # CompactBoundary.memory 由阶段 3 的 manager.py 折叠路径填充；
+            # 这里用 getattr 防御未实现时的空 dict。
+            memory = getattr(result.boundary, "memory", None) if result.boundary else None
+            memory_text = format_folded_memory(memory if isinstance(memory, dict) else {})
+            return {
+                "ok": True,
+                "message": f"Context compacted into structured session memory (before={before} tokens).",
+                "folded_memory_text": memory_text,
+            }
+        return {"ok": False, "error": str(result)}
+
     def _announce_deferred_tools(self, conversation: ConversationManager) -> None:
         """把延迟工具名清单告诉模型，只在需要的时候发。
 
@@ -570,6 +876,14 @@ class Agent:
             for he in self._drain_hook_events():
                 yield he
 
+        # Skill 自进化：本轮的用户消息即是「下一轮反馈」——把它合并进上一轮的
+        # pending window，成为 ready window，等本轮 LoopComplete 时后台 online_ingest。
+        current_user_msg = next(
+            (m.content for m in reversed(conversation.history) if m.role == "user" and m.content),
+            "",
+        )
+        ready_skill_window = self._pop_pending_skill_extraction_window(current_user_msg)
+
         iteration = 0
         max_tokens_escalated = False
         output_recoveries = 0
@@ -651,6 +965,8 @@ class Agent:
                 recovery=self.recovery_state,
                 tool_schemas=self.registry.get_all_schemas(self.protocol),
                 transcript_path=self._transcript_path,
+                # 启用折叠时，接近阈值走三结构记忆折叠而非纯摘要
+                fold_memory_fn=self.generate_folded_session_memory if self._fold_ctx is not None else None,
             )
             if isinstance(compact_result, CompactEvent):
                 yield CompactNotification(
@@ -669,22 +985,61 @@ class Agent:
             collector = StreamCollector()
             executor = StreamingExecutor()
             deferred_tool_calls: list[ToolCallComplete] = []
-            llm_stream = self.client.stream(conversation, system=system, tools=tools)
-            async for event in collector.consume(llm_stream):
-                # 流式工具执行：收到完整 tool_use 就立刻提交执行，不等整个响应结束
-                if isinstance(event, ToolUseEvent):
-                    tc = collector.response.tool_calls[-1]
-                    # 需要交互式权限确认的工具延迟到流结束后顺序执行
-                    tool = self.registry.get(tc.tool_name)
-                    needs_ask = False
-                    if tool and self.permission_checker:
-                        decision = self.permission_checker.check(tool, tc.arguments)
-                        needs_ask = decision.effect == "ask"
-                    if needs_ask:
-                        deferred_tool_calls.append(tc)
-                    else:
-                        executor.submit(tc)
-                yield event
+
+            # 带退避重试的 LLM 流式调用：应对 provider 高峰期限流/繁忙/网络抖动。
+            # 只在「本轮尚未产出任何内容」时重试，避免重复输出或重复提交工具。
+            for llm_attempt in range(LLM_STREAM_MAX_ATTEMPTS):
+                try:
+                    llm_stream = self.client.stream(conversation, system=system, tools=tools)
+                    async for event in collector.consume(llm_stream):
+                        # 流式工具执行：收到完整 tool_use 就立刻提交执行，不等整个响应结束
+                        if isinstance(event, ToolUseEvent):
+                            tc = collector.response.tool_calls[-1]
+                            # 需要交互式权限确认的工具延迟到流结束后顺序执行
+                            tool = self.registry.get(tc.tool_name)
+                            needs_ask = False
+                            if tool and self.permission_checker:
+                                decision = self.permission_checker.check(tool, tc.arguments)
+                                needs_ask = decision.effect == "ask"
+                            if needs_ask:
+                                deferred_tool_calls.append(tc)
+                            else:
+                                executor.submit(tc)
+                        yield event
+                    break  # 正常完成，退出重试循环
+                except asyncio.CancelledError:
+                    raise
+                except (RateLimitError, NetworkError, LLMError) as exc:
+                    if (
+                        collector.response.is_empty()
+                        and llm_attempt < LLM_STREAM_MAX_ATTEMPTS - 1
+                    ):
+                        # 尊重 provider 给出的 retry-after，否则按指数退避
+                        retry_after = getattr(exc, "retry_after", None)
+                        wait = (
+                            retry_after
+                            if retry_after and retry_after > 0
+                            else LLM_STREAM_BASE_BACKOFF * (2 ** llm_attempt)
+                        )
+                        log.warning(
+                            "LLM transient error (attempt %d/%d), retrying in %.1fs: %s",
+                            llm_attempt + 1,
+                            LLM_STREAM_MAX_ATTEMPTS,
+                            wait,
+                            exc,
+                        )
+                        yield RetryEvent(
+                            reason=(
+                                f"transient API error, retry {llm_attempt + 1}/"
+                                f"{LLM_STREAM_MAX_ATTEMPTS}: {exc}"
+                            ),
+                            wait=wait,
+                        )
+                        await asyncio.sleep(wait)
+                        # 重置 collector，避免下一次尝试累积半截内容
+                        collector = StreamCollector()
+                        continue
+                    raise
 
             response = collector.response
 
@@ -741,6 +1096,25 @@ class Agent:
                     response.text, thinking_blocks=conv_thinking
                 )
                 self._loop_count += 1
+
+                # Skill 自进化：本轮结束后暂存 pending window（当前轮 user/assistant），
+                # 若上一轮有 ready window 则后台 online_ingest（消费「本轮反馈」）。
+                if self._skill_loader is not None:
+                    self._set_pending_skill_extraction_window(
+                        user_message=current_user_msg,
+                        assistant_text=response.text,
+                        retrieved_reference=self._last_retrieved_skill_reference,
+                    )
+                    if ready_skill_window:
+                        self._schedule_background_skill_task(
+                            self._run_online_skill_evolution(ready_skill_window)
+                        )
+
+                # 会话记忆折叠：注入折叠指引，促使模型在上下文过长时主动 compact_context。
+                fold_guidance = self._build_fold_guidance_section()
+                if fold_guidance:
+                    conversation.add_system_reminder(fold_guidance)
+
                 if (
                     self._loop_count % MEMORY_EXTRACTION_INTERVAL == 0
                     and self.memory_manager
@@ -1127,6 +1501,7 @@ class Agent:
             recovery=self.recovery_state,
             tool_schemas=self.registry.get_all_schemas(self.protocol),
             transcript_path=self._transcript_path,
+            fold_memory_fn=self.generate_folded_session_memory if self._fold_ctx is not None else None,
         )
         if isinstance(result, CompactEvent):
             env_context = build_environment_context(
@@ -1206,6 +1581,8 @@ class Agent:
                 recovery=self.recovery_state,
                 tool_schemas=self.registry.get_all_schemas(self.protocol),
                 transcript_path=self._transcript_path,
+                # 启用折叠时，接近阈值走三结构记忆折叠而非纯摘要
+                fold_memory_fn=self.generate_folded_session_memory if self._fold_ctx is not None else None,
             )
             if isinstance(compact_result, CompactEvent):
                 conversation.inject_environment(env_context)

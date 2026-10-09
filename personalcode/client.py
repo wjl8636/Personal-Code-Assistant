@@ -4,6 +4,7 @@ import json
 from abc import ABC, abstractmethod
 from typing import Any, AsyncIterator
 
+import httpx
 from anthropic import AsyncAnthropic
 from openai import AsyncOpenAI
 
@@ -32,6 +33,17 @@ from personalcode.tools.base import (
 # /v1/models 端点拖延启动。超时后降级为 None（即"未知"），
 # 由下一层 context window 解析逻辑接管。
 ANTHROPIC_MODEL_FETCH_TIMEOUT = 3.0
+
+# LLM 请求的超时与重试策略。
+# - connect 放宽到 15s：高峰时段 provider（DeepSeek 等）建连偶发变慢，
+#   默认的 5s connect 超时会误伤，直接抛 Network error。
+# - read 保持 600s：流式长响应（多轮工具调用、长思考输出）需要足够的
+#   读超时，避免中途被掐断。
+# - max_retries=3：对 408/429/5xx 与连接错误做有限次自动重试；对
+#   stream 请求，SDK 只在「尚未开始迭代流」时才会重试，因此配合
+#   agent 层的退避重试一起兜底。
+_LLM_TIMEOUT = httpx.Timeout(600.0, connect=15.0)
+_LLM_MAX_RETRIES = 3
 
 
 _EPHEMERAL = {"type": "ephemeral"}
@@ -150,7 +162,12 @@ class AnthropicClient(LLMClient):
                 "Anthropic API key not found. "
                 "Set it in .personalcode/config.yaml or via ANTHROPIC_API_KEY env var."
             )
-        self._client = AsyncAnthropic(api_key=api_key, base_url=config.base_url)
+        self._client = AsyncAnthropic(
+            api_key=api_key,
+            base_url=config.base_url,
+            timeout=_LLM_TIMEOUT,
+            max_retries=_LLM_MAX_RETRIES,
+        )
 
     def set_max_output_tokens(self, tokens: int) -> None:
         self.max_output_tokens = tokens
@@ -354,7 +371,12 @@ class OpenAIClient(LLMClient):
                 "OpenAI API key not found. "
                 "Set it in .personalcode/config.yaml or via OPENAI_API_KEY env var."
             )
-        self._client = AsyncOpenAI(api_key=api_key, base_url=config.base_url)
+        self._client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=config.base_url,
+            timeout=_LLM_TIMEOUT,
+            max_retries=_LLM_MAX_RETRIES,
+        )
 
     def set_max_output_tokens(self, tokens: int) -> None:
         self.max_output_tokens = tokens
@@ -487,7 +509,12 @@ class OpenAICompatClient(LLMClient):
                 "OpenAI-compatible API key not found. "
                 "Set it in .personalcode/config.yaml or via OPENAI_API_KEY env var."
             )
-        self._client = AsyncOpenAI(api_key=api_key, base_url=config.base_url)
+        self._client = AsyncOpenAI(
+            api_key=api_key,
+            base_url=config.base_url,
+            timeout=_LLM_TIMEOUT,
+            max_retries=_LLM_MAX_RETRIES,
+        )
 
     def set_max_output_tokens(self, tokens: int) -> None:
         self.max_output_tokens = tokens

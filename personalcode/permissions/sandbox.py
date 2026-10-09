@@ -13,6 +13,17 @@ class PathSandbox:
         ".personalcode/skills/",
     ]
 
+    @classmethod
+    def without_skill_deny(cls) -> list[str]:
+        """返回去掉「.personalcode/skills/」禁写项的默认列表。
+
+        Skill 自进化（write_skill/evolution.py 的 create/evolve）需要写项目级
+        skills 目录，而默认 _DEFAULT_DENY_WRITE 在任意权限模式（含 BYPASS）下都会
+        拦截。构造「允许自进化写 skill」的沙箱时用这个列表覆盖 deny_write。
+        刻意只放开 skills 目录，config.yaml / permissions.local.yaml 仍保持禁写。
+        """
+        return [dp for dp in cls._DEFAULT_DENY_WRITE if not dp.startswith(".personalcode/skills")]
+
     def __init__(
         self,
         project_root: str,
